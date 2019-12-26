@@ -1,0 +1,22 @@
+parameters:
+    key_name:
+        type: string
+        description: Keypair name
+    net_name:
+        type: string
+        description: Net name
+heat_template_version: 2017-02-24
+description: Ejemplo1,una maquina virtual CirrOS sin red
+resources: 
+    vm2:
+        type: OS::Nova::Server
+        properties:
+            key_name: { get_param: key_name }
+            image: cirros-0.3.4-x86_64-vnx
+            flavor: m1.tiny
+            networks:
+                - network: { get_param: net_name }
+outputs:
+    instance_ip:
+        description: The IP address of the deployed instance
+        value: { get_attr: [vm2, first_address] }
