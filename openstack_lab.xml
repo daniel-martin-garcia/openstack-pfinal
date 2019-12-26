@@ -1,0 +1,1198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+~~~~~~~~~~~~~~~~~~~~~~
+ VNX Sample scenarios
+~~~~~~~~~~~~~~~~~~~~~~
+
+Name:        openstack_lab-stein
+
+Description: This is an Openstack tutorial scenario designed to experiment with Openstack free and open-source 
+             software platform for cloud-computing. It is made of four LXC containers: 
+               - one controller
+               - one network node
+               - two compute nodes
+             Openstack version used: Stein.
+             The network configuration is based on the one named "Classic with Open vSwitch" described here:
+                  http://docs.openstack.org/liberty/networking-guide/scenario-classic-ovs.html
+
+Author:      David Fernandez (david@dit.upm.es)
+
+This file is part of the Virtual Networks over LinuX (VNX) Project distribution. 
+(www: http://www.dit.upm.es/vnx - e-mail: vnx@dit.upm.es) 
+
+Copyright (C) 2019 Departamento de Ingenieria de Sistemas Telematicos (DIT)
+	      Universidad Politecnica de Madrid (UPM)
+              SPAIN
+-->
+
+<vnx xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:noNamespaceSchemaLocation="/usr/share/xml/vnx/vnx-2.00.xsd">
+  <global>
+    <version>2.0</version>
+    <scenario_name>openstack_lab-stein</scenario_name>
+    <ssh_key>/root/.ssh/id_rsa.pub</ssh_key>
+    <automac offset="0"/>
+    <!--vm_mgmt type="none"/-->
+    <vm_mgmt type="private" network="10.20.0.0" mask="24" offset="0">
+       <host_mapping />
+    </vm_mgmt> 
+    <vm_defaults>
+        <console id="0" display="no"/>
+        <console id="1" display="yes"/>
+    </vm_defaults>
+    <cmd-seq seq="step1-6">step1,step2,step3,step3b,step4,step5,step6</cmd-seq>
+    <cmd-seq seq="step4">step41,step42,step43,step44</cmd-seq>
+    <cmd-seq seq="step5">step51,step52,step53</cmd-seq>
+    <cmd-seq seq="step10">step101,step102</cmd-seq>
+    <cmd-seq seq="start-all">step00,step42,step43,step44,step52,step53</cmd-seq>
+    <cmd-seq seq="discover-hosts">step44</cmd-seq>
+  </global>
+
+  <net name="MgmtNet" mode="openvswitch" mtu="1450"/>
+  <net name="TunnNet" mode="openvswitch" mtu="1450"/>
+  <net name="ExtNet"  mode="openvswitch" />
+  <net name="VlanNet" mode="openvswitch" />
+  <net name="virbr0"  mode="virtual_bridge" managed="no"/>
+
+  <!-- 
+    ~~
+    ~~   C O N T R O L L E R   N O D E
+    ~~
+  -->
+  <vm name="controller" type="lxc" arch="x86_64">
+    <filesystem type="cow">filesystems/rootfs_lxc_ubuntu64-ostack-controller</filesystem>
+    <mem>1G</mem>
+    <!--console id="0" display="yes"/-->
+
+    <if id="1" net="MgmtNet">
+      <ipv4>10.0.0.11/24</ipv4>
+    </if>
+    <if id="2" net="ExtNet">
+      <ipv4>10.0.10.11/24</ipv4>
+    </if>
+    <if id="9" net="virbr0">
+      <ipv4>dhcp</ipv4>
+    </if>
+
+    <!-- Copy /etc/hosts file -->
+    <filetree seq="on_boot" root="/root/">conf/hosts</filetree>
+    <exec seq="on_boot" type="verbatim">
+        cat /root/hosts >> /etc/hosts;
+        rm /root/hosts;
+    </exec>
+
+    <!-- Copy ntp config and restart service -->
+    <!-- Note: not used because ntp cannot be used inside a container. Clocks are supposed to be synchronized
+         between the vms/containers and the host --> 
+    <!--filetree seq="on_boot" root="/etc/chrony/chrony.conf">conf/ntp/chrony-controller.conf</filetree>
+    <exec seq="on_boot" type="verbatim">
+        service chrony restart
+    </exec-->
+
+    <filetree seq="on_boot" root="/root/">conf/controller/bin</filetree>
+    <exec seq="on_boot" type="verbatim">
+        chmod +x /root/bin/*
+    </exec>
+    <exec seq="on_boot" type="verbatim">
+        # Change MgmtNet and TunnNet interfaces MTU
+        ifconfig eth1 mtu 1450
+        sed -i -e '/iface eth1 inet static/a \   mtu 1450' /etc/network/interfaces
+
+        # Change owner of secret_key to horizon to avoid a 500 error when
+        # accessing horizon (new problem arosed in v04)
+        # See: https://ask.openstack.org/en/question/30059/getting-500-internal-server-error-while-accessing-horizon-dashboard-in-ubuntu-icehouse/
+        chown -f horizon /var/lib/openstack-dashboard/secret_key
+
+    	# Stop nova services. Before being configured, they consume a lot of CPU
+    	service nova-scheduler stop
+		service nova-api stop
+		service nova-conductor stop
+    </exec>
+
+    <exec seq="step00" type="verbatim">
+    	# Restart nova services
+    	service nova-scheduler start
+		service nova-api start
+		service nova-conductor start
+    </exec>
+
+    <!-- 
+         STEP 1: Basic services 
+    -->
+    <filetree seq="step1" root="/etc/mysql/mariadb.conf.d/">conf/controller/mysql/mysqld_openstack.cnf</filetree>
+    <filetree seq="step1" root="/etc/">conf/controller/memcached/memcached.conf</filetree>
+    <filetree seq="step1" root="/etc/default/">conf/controller/etcd/etcd</filetree>
+    <!--filetree seq="step1" root="/etc/mongodb.conf">conf/controller/mongodb/mongodb.conf</filetree!-->
+    <exec seq="step1" type="verbatim">
+
+    	# Stop nova services. Before being configured, they consume a lot of CPU
+    	service nova-scheduler stop
+		service nova-api stop
+		service nova-conductor stop
+
+        # Change all ocurrences of utf8mb4 to utf8. See comment above
+        #for f in $( find /etc/mysql/mariadb.conf.d/ -type f ); do echo "Changing utf8mb4 to utf8 in file $f"; sed -i -e 's/utf8mb4/utf8/g' $f; done
+        service mysql restart
+        #mysql_secure_installation # to be run manually
+
+        rabbitmqctl add_user openstack xxxx
+        rabbitmqctl set_permissions openstack ".*" ".*" ".*" 
+
+        service memcached restart
+
+        systemctl enable etcd
+        systemctl start etcd
+
+        #service mongodb stop
+        #rm -f /var/lib/mongodb/journal/prealloc.*
+        #service mongodb start
+    </exec>
+
+    <!--
+         STEP 2: Identity service 
+    -->
+    <filetree seq="step2" root="/etc/keystone/">conf/controller/keystone/keystone.conf</filetree>
+    <filetree seq="step2" root="/root/bin/">conf/controller/keystone/admin-openrc.sh</filetree>
+    <filetree seq="step2" root="/root/bin/">conf/controller/keystone/demo-openrc.sh</filetree>
+    <exec seq="step2" type="verbatim">
+        count=1; while ! mysqladmin ping ; do echo -n $count; echo ": waiting for mysql ..."; ((count++)) &amp;&amp; ((count==6)) &amp;&amp; echo "--" &amp;&amp; echo "-- ERROR: database not ready." &amp;&amp; echo "--" &amp;&amp; break; sleep 2; done
+    </exec>
+    <exec seq="step2" type="verbatim">
+
+        mysql -u root --password='xxxx' -e "CREATE DATABASE keystone;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+
+        su -s /bin/sh -c "keystone-manage db_sync" keystone
+        keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+        keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+
+        keystone-manage bootstrap --bootstrap-password xxxx \
+          --bootstrap-admin-url http://controller:5000/v3/ \
+          --bootstrap-internal-url http://controller:5000/v3/ \
+          --bootstrap-public-url http://controller:5000/v3/ \
+          --bootstrap-region-id RegionOne
+
+        echo "ServerName controller" >> /etc/apache2/apache2.conf
+        #ln -s /etc/apache2/sites-available/wsgi-keystone.conf /etc/apache2/sites-enabled
+        service apache2 restart
+        rm -f /var/lib/keystone/keystone.db
+        sleep 5
+
+        export OS_USERNAME=admin
+        export OS_PASSWORD=xxxx
+        export OS_PROJECT_NAME=admin
+        export OS_USER_DOMAIN_NAME=Default
+        export OS_PROJECT_DOMAIN_NAME=Default
+        export OS_AUTH_URL=http://controller:5000/v3
+        export OS_IDENTITY_API_VERSION=3
+
+        # Create users and projects
+        openstack project create --domain default --description "Service Project" service
+        openstack project create --domain default --description "Demo Project" demo
+        openstack user create --domain default --password=xxxx demo
+        openstack role create user
+        openstack role add --project demo --user demo user
+    </exec>
+
+    <!-- 
+         STEP 3: Image service (Glance) 
+    -->
+    <filetree seq="step3" root="/etc/glance/">conf/controller/glance/glance-api.conf</filetree>
+    <filetree seq="step3" root="/etc/glance/">conf/controller/glance/glance-registry.conf</filetree>
+    <exec seq="step3" type="verbatim">
+        mysql -u root --password='xxxx' -e "CREATE DATABASE glance;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+        source /root/bin/admin-openrc.sh
+        openstack user create --domain default --password=xxxx glance
+        openstack role add --project service --user glance admin
+        openstack service create --name glance --description "OpenStack Image" image
+        openstack endpoint create --region RegionOne image public http://controller:9292
+        openstack endpoint create --region RegionOne image internal http://controller:9292
+        openstack endpoint create --region RegionOne image admin http://controller:9292
+
+        su -s /bin/sh -c "glance-manage db_sync" glance
+        service glance-registry restart
+        service glance-api restart
+        #rm -f /var/lib/glance/glance.sqlite
+    </exec>
+
+    <!-- 
+         STEP 3B: Placement service API
+    -->
+    <filetree seq="step3b" root="/etc/placement/">conf/controller/placement/placement.conf</filetree>
+    <exec seq="step3b" type="verbatim">
+        mysql -u root --password='xxxx' -e "CREATE DATABASE placement;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+        source /root/bin/admin-openrc.sh
+        openstack user create --domain default --password=xxxx placement
+        openstack role add --project service --user placement admin
+        openstack service create --name placement --description "Placement API" placement
+        openstack endpoint create --region RegionOne placement public   http://controller:8778
+        openstack endpoint create --region RegionOne placement internal http://controller:8778
+        openstack endpoint create --region RegionOne placement admin    http://controller:8778
+        su -s /bin/sh -c "placement-manage db sync" placement
+        service apache2 restart
+    </exec>
+
+    <!-- 
+         STEP 4: Compute service (Nova) 
+    -->
+    <filetree seq="step41" root="/etc/nova/">conf/controller/nova/nova.conf</filetree>
+    <exec seq="step41" type="verbatim">
+        mysql -u root --password='xxxx' -e "CREATE DATABASE nova_api;"
+        mysql -u root --password='xxxx' -e "CREATE DATABASE nova;"
+        mysql -u root --password='xxxx' -e "CREATE DATABASE nova_cell0;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON nova_api.*   TO 'nova'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON nova_api.*   TO 'nova'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON nova.*       TO 'nova'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON nova.*       TO 'nova'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON nova_cell0.* TO 'nova'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON nova_cell0.* TO 'nova'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+
+        source /root/bin/admin-openrc.sh
+
+        openstack user create --domain default --password=xxxx nova
+        openstack role add --project service --user nova admin
+        openstack service create --name nova --description "OpenStack Compute" compute
+
+        openstack endpoint create --region RegionOne compute public   http://controller:8774/v2.1
+        openstack endpoint create --region RegionOne compute internal http://controller:8774/v2.1
+        openstack endpoint create --region RegionOne compute admin    http://controller:8774/v2.1
+
+        # Restart services stopped at step 1 to save CPU
+    	service nova-scheduler start
+		service nova-api start
+		service nova-conductor start
+
+	    su -s /bin/sh -c "nova-manage api_db sync" nova
+        su -s /bin/sh -c "nova-manage cell_v2 map_cell0" nova
+        su -s /bin/sh -c "nova-manage cell_v2 create_cell --name=cell1 --verbose" nova
+	    su -s /bin/sh -c "nova-manage db sync" nova
+        su -s /bin/sh -c "nova-manage cell_v2 list_cells" nova
+
+        service nova-api restart
+        service nova-consoleauth restart
+        service nova-scheduler restart
+        service nova-conductor restart
+        service nova-novncproxy restart
+        #rm -f /var/lib/nova/nova.sqlite
+    </exec>
+
+    <exec seq="step43" type="verbatim">
+        source /root/bin/admin-openrc.sh
+        # Wait for compute1 hypervisor to be up
+        HOST=compute1
+        i=5; while ! $( openstack host list | grep $HOST > /dev/null ); do echo "$i - waiting for $HOST to be registered..."; i=$(( i - 1 )); if ((i == 0)); then echo "ERROR: timeout waiting for $HOST"; break; else sleep 5; fi done
+    </exec>
+    <exec seq="step43" type="verbatim">
+        source /root/bin/admin-openrc.sh
+        # Wait for compute2 hypervisor to be up
+        HOST=compute2
+        i=5; while ! $( openstack host list | grep $HOST > /dev/null ); do echo "$i - waiting for $HOST to be registered..."; i=$(( i - 1 )); if ((i == 0)); then echo "ERROR: timeout waiting for $HOST"; break; else sleep 5; fi done
+    </exec>
+    <exec seq="step44,discover-hosts" type="verbatim">
+        source /root/bin/admin-openrc.sh
+        su -s /bin/sh -c "nova-manage cell_v2 discover_hosts --verbose" nova
+        openstack hypervisor list
+    </exec>
+
+    <!-- 
+         STEP 5: Network service (Neutron)
+    -->
+    <filetree seq="step51" root="/etc/neutron/">conf/controller/neutron/neutron.conf</filetree>
+    <!--filetree seq="step51" root="/etc/neutron/">conf/controller/neutron/neutron_lbaas.conf</filetree-->
+    <filetree seq="step51" root="/etc/neutron/plugins/ml2/">conf/controller/neutron/ml2_conf.ini</filetree>
+    <exec seq="step51" type="verbatim">
+        mysql -u root --password='xxxx' -e "CREATE DATABASE neutron;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+        source /root/bin/admin-openrc.sh
+        openstack user create --domain default --password=xxxx neutron
+        openstack role add --project service --user neutron admin
+        openstack service create --name neutron --description "OpenStack Networking" network
+        openstack endpoint create --region RegionOne network public   http://controller:9696
+        openstack endpoint create --region RegionOne network internal http://controller:9696
+        openstack endpoint create --region RegionOne network admin    http://controller:9696
+        su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
+
+        # LBaaS
+        neutron-db-manage --subproject neutron-lbaas upgrade head
+
+        # FwaaS
+        neutron-db-manage --subproject neutron-fwaas upgrade head
+
+        # LBaaS Dashboard panels
+        #git clone https://git.openstack.org/openstack/neutron-lbaas-dashboard
+        #cd neutron-lbaas-dashboard
+        #git checkout stable/mitaka
+        #python setup.py install
+        #cp neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
+        #cd /usr/share/openstack-dashboard
+        #./manage.py collectstatic --noinput
+        #./manage.py compress
+        #sudo service apache2 restart
+
+        service nova-api restart
+        service neutron-server restart
+    </exec>
+
+    <!-- 
+         STEP 6: Dashboard service 
+    -->
+    <filetree seq="step6" root="/etc/openstack-dashboard/">conf/controller/dashboard/local_settings.py</filetree>
+    <exec seq="step6" type="verbatim">
+    	#chown www-data:www-data /var/lib/openstack-dashboard/secret_key
+    	rm -f /var/lib/openstack-dashboard/secret_key
+    	systemctl enable apache2
+        service apache2 restart
+    </exec>
+
+    <!-- 
+         STEP 7: Trove service 
+    -->
+    <cmd-seq seq="step7">step71,step72,step73</cmd-seq>
+    <exec seq="step71" type="verbatim">
+        apt-get -y install python-trove python-troveclient   python-glanceclient trove-common trove-api trove-taskmanager trove-conductor python-pip
+        pip install trove-dashboard==7.0.0.0b2
+    </exec>
+
+    <filetree seq="step72" root="/etc/trove/">conf/controller/trove/trove.conf</filetree>
+    <filetree seq="step72" root="/etc/trove/">conf/controller/trove/trove-conductor.conf</filetree>
+    <filetree seq="step72" root="/etc/trove/">conf/controller/trove/trove-taskmanager.conf</filetree>
+    <filetree seq="step72" root="/etc/trove/">conf/controller/trove/trove-guestagent.conf</filetree>
+    <exec seq="step72" type="verbatim">
+        mysql -u root --password='xxxx' -e "CREATE DATABASE trove;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON trove.* TO 'trove'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON trove.* TO 'trove'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+        source /root/bin/admin-openrc.sh
+
+        openstack user create --domain default --password xxxx trove
+        openstack role add --project service --user trove admin
+        openstack service create --name trove --description "Database" database
+        openstack endpoint create --region RegionOne database public http://controller:8779/v1.0/%\(tenant_id\)s
+        openstack endpoint create --region RegionOne database internal http://controller:8779/v1.0/%\(tenant_id\)s
+        openstack endpoint create --region RegionOne database admin http://controller:8779/v1.0/%\(tenant_id\)s
+
+        su -s /bin/sh -c "trove-manage db_sync" trove
+
+        service trove-api restart
+        service trove-taskmanager restart
+        service trove-conductor restart
+
+        # Install trove_dashboard
+        cp -a /usr/local/lib/python2.7/dist-packages/trove_dashboard/enabled/* /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
+        service apache2 restart
+
+    </exec>
+
+    <exec seq="step73" type="verbatim">
+        #wget -P /tmp/images http://tarballs.openstack.org/trove/images/ubuntu/mariadb.qcow2
+        wget -P /tmp/images/ http://138.4.7.228/download/vnx/filesystems/ostack-images/trove/mariadb.qcow2
+        glance image-create --name "trove-mariadb" --file /tmp/images/mariadb.qcow2 --disk-format qcow2 --container-format bare --visibility public --progress
+        rm /tmp/images/mariadb.qcow2
+        su -s /bin/sh -c "trove-manage --config-file /etc/trove/trove.conf datastore_update mysql ''" trove 
+        su -s /bin/sh -c "trove-manage --config-file /etc/trove/trove.conf datastore_version_update mysql mariadb mariadb glance_image_ID '' 1" trove
+
+        # Create example database
+        openstack flavor show m1.smaller >/dev/null 2>&amp;1 || openstack flavor create m1.smaller --ram 512 --disk 3 --vcpus 1 --id 6
+        #trove create mysql_instance_1 m1.smaller --size 1 --databases myDB --users userA:xxxx --datastore_version mariadb --datastore mysql
+    </exec>
+
+    <!-- 
+         STEP 8: Heat service 
+    -->
+    <!--cmd-seq seq="step8">step81,step82</cmd-seq-->
+    <filetree seq="step8" root="/etc/heat/">conf/controller/heat/heat.conf</filetree>
+    <filetree seq="step8" root="/root/heat/">conf/controller/heat/examples</filetree>
+    <exec seq="step8" type="verbatim">
+        mysql -u root --password='xxxx' -e "CREATE DATABASE heat;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON heat.* TO 'heat'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON heat.* TO 'heat'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+
+        source /root/bin/admin-openrc.sh
+        openstack user create --domain default --password xxxx heat
+        openstack role add --project service --user heat admin
+        openstack service  create --name heat     --description "Orchestration" orchestration
+        openstack service  create --name heat-cfn --description "Orchestration" cloudformation
+        openstack endpoint create --region RegionOne orchestration  public   http://controller:8004/v1/%\(tenant_id\)s
+        openstack endpoint create --region RegionOne orchestration  internal http://controller:8004/v1/%\(tenant_id\)s
+        openstack endpoint create --region RegionOne orchestration  admin    http://controller:8004/v1/%\(tenant_id\)s
+        openstack endpoint create --region RegionOne cloudformation public   http://controller:8000/v1
+        openstack endpoint create --region RegionOne cloudformation internal http://controller:8000/v1
+        openstack endpoint create --region RegionOne cloudformation admin    http://controller:8000/v1
+        openstack domain   create --description "Stack projects and users" heat
+        openstack user     create --domain heat --password xxxx heat_domain_admin
+        openstack role add --domain heat --user-domain heat --user heat_domain_admin admin
+        openstack role create heat_stack_owner
+        openstack role add --project demo --user demo heat_stack_owner
+        openstack role create heat_stack_user
+
+        su -s /bin/sh -c "heat-manage db_sync" heat
+        service heat-api restart
+        service heat-api-cfn restart
+        service heat-engine restart
+
+        # Install Orchestration interface in Dashboard
+        export DEBIAN_FRONTEND=noninteractive
+		apt-get install -y gettext
+		pip3 install heat-dashboard
+
+        cd /root
+		git clone https://github.com/openstack/heat-dashboard.git
+		cd heat-dashboard/
+		git checkout stable/stein
+		cp heat_dashboard/enabled/_[1-9]*.py /usr/share/openstack-dashboard/openstack_dashboard/local/enabled
+		python3 ./manage.py compilemessages
+		cd /usr/share/openstack-dashboard
+		DJANGO_SETTINGS_MODULE=openstack_dashboard.settings python3 manage.py collectstatic --noinput
+		DJANGO_SETTINGS_MODULE=openstack_dashboard.settings python3 manage.py compress --force
+		rm -f /var/lib/openstack-dashboard/secret_key
+    	service apache2 restart
+
+    </exec>
+
+    <exec seq="create-demo-heat" type="verbatim">
+        source /root/bin/demo-openrc.sh
+
+        # Create internal network
+        openstack network create net-heat
+        openstack subnet create --network net-heat --gateway 10.1.10.1 --dns-nameserver 8.8.8.8 --subnet-range 10.1.10.0/24 --allocation-pool start=10.1.10.8,end=10.1.10.100 subnet-heat
+
+        mkdir -p /root/keys
+        openstack keypair create key-heat > /root/keys/key-heat
+        export NET_ID=$( openstack network list --name net-heat -f value -c ID )
+        openstack stack create -t /root/heat/examples/demo-template.yml --parameter "NetID=$NET_ID" stack
+
+    </exec>
+
+
+    <!-- 
+         STEP 9: Tacker service 
+    -->
+    <cmd-seq seq="step9">step91,step92</cmd-seq>
+
+    <exec seq="step91" type="verbatim">
+        apt-get -y install python-pip git
+        pip install --upgrade pip
+    </exec>
+
+    <filetree seq="step92" root="/usr/local/etc/tacker/">conf/controller/tacker/tacker.conf</filetree>
+    <filetree seq="step92" root="/usr/local/etc/tacker/">conf/controller/tacker/default-vim-config.yaml</filetree>
+    <filetree seq="step92" root="/root/tacker/">conf/controller/tacker/examples</filetree>
+    <exec seq="step92" type="verbatim">
+        sed -i -e 's/.*"resource_types:OS::Nova::Flavor":.*/    "resource_types:OS::Nova::Flavor": "role:admin",/' /etc/heat/policy.json 
+
+        mysql -u root --password='xxxx' -e "CREATE DATABASE tacker;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON tacker.* TO 'tacker'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON tacker.* TO 'tacker'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+
+        source /root/bin/admin-openrc.sh
+        openstack user create --domain default --password xxxx tacker
+        openstack role add --project service --user tacker admin
+        openstack service create --name tacker --description "Tacker Project" nfv-orchestration
+        openstack endpoint create --region RegionOne nfv-orchestration public   http://controller:9890/
+        openstack endpoint create --region RegionOne nfv-orchestration internal http://controller:9890/
+        openstack endpoint create --region RegionOne nfv-orchestration admin    http://controller:9890/
+
+        mkdir -p /root/tacker
+        cd /root/tacker
+        git clone https://github.com/openstack/tacker
+        cd tacker
+        git checkout stable/ocata
+        pip install -r requirements.txt
+        pip install tosca-parser
+        python setup.py install
+        mkdir -p /var/log/tacker
+
+        /usr/local/bin/tacker-db-manage --config-file /usr/local/etc/tacker/tacker.conf upgrade head
+
+        # Tacker client
+        cd /root/tacker
+        git clone https://github.com/openstack/python-tackerclient
+        cd python-tackerclient
+        git checkout stable/ocata
+        python setup.py install
+
+        # Tacker horizon
+        cd /root/tacker
+        git clone https://github.com/openstack/tacker-horizon
+        cd tacker-horizon
+        git checkout stable/ocata
+        python setup.py install
+        cp tacker_horizon/enabled/* /usr/share/openstack-dashboard/openstack_dashboard/enabled/
+        service apache2 restart
+
+        # Start tacker server
+        mkdir -p /var/log/tacker
+        nohup python /usr/local/bin/tacker-server \
+            --config-file /usr/local/etc/tacker/tacker.conf \
+            --log-file /var/log/tacker/tacker.log &amp;
+
+        # Register default VIM
+        tacker vim-register --is-default --config-file /usr/local/etc/tacker/default-vim-config.yaml \
+            --description "Default VIM" "Openstack-VIM"
+
+    </exec>
+    <exec seq="step93" type="verbatim">
+        nohup python /usr/local/bin/tacker-server \
+            --config-file /usr/local/etc/tacker/tacker.conf \
+            --log-file /var/log/tacker/tacker.log &amp;
+
+    </exec>
+
+    <exec seq="create-demo-tacker" type="verbatim">
+        source /root/bin/demo-openrc.sh
+
+        # Create internal network
+        openstack network create net-tacker
+        openstack subnet create --network net-tacker --gateway 10.1.11.1 --dns-nameserver 8.8.8.8 --subnet-range 10.1.11.0/24 --allocation-pool start=10.1.11.8,end=10.1.11.100 subnet-tacker
+
+        cd /root/tacker/examples
+        tacker vnfd-create --vnfd-file sample-vnfd.yaml testd
+
+        # Falla con error: 
+        # ERROR: Property error: : resources.VDU1.properties.image: : No module named v2.client
+        tacker vnf-create --vnfd-id $( tacker vnfd-list | awk '/ testd / { print $2 }' ) test
+
+    </exec>
+
+    <!--filetree seq="step92" root="/usr/local/etc/tacker/">conf/controller/tacker/tacker.conf</filetree>
+    <exec seq="step92" type="verbatim">
+    </exec-->
+
+    <!-- 
+         STEP 10: Ceilometer service 
+    -->
+    <exec seq="step101" type="verbatim">
+		export DEBIAN_FRONTEND=noninteractive
+		#apt-get -y install python-pip
+        #pip install --upgrade pip
+		#pip install gnocchi[mysql,keystone] gnocchiclient
+		apt-get -y install ceilometer-collector ceilometer-agent-central ceilometer-agent-notification python-ceilometerclient
+        apt-get -y install gnocchi-common gnocchi-api gnocchi-metricd gnocchi-statsd python-gnocchiclient
+
+    </exec>
+
+    <filetree seq="step102" root="/etc/ceilometer/">conf/controller/ceilometer/ceilometer.conf</filetree>
+    <!--filetree seq="step102" root="/etc/mongodb.conf">conf/controller/mongodb/mongodb.conf</filetree-->
+    <!--filetree seq="step102" root="/etc/apache2/sites-available/ceilometer.conf">conf/controller/ceilometer/apache/ceilometer.conf</filetree-->
+    <!--filetree seq="step102" root="/etc/apache2/sites-available/gnocchi.conf">conf/controller/ceilometer/apache/gnocchi.conf</filetree-->
+    <filetree seq="step102" root="/etc/gnocchi/">conf/controller/ceilometer/gnocchi.conf</filetree>
+    <filetree seq="step102" root="/etc/gnocchi/">conf/controller/ceilometer/api-paste.ini</filetree>
+    <exec seq="step102" type="verbatim">
+
+        # Create gnocchi database
+        mysql -u root --password='xxxx' -e "CREATE DATABASE gnocchidb default character set utf8;"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON gnocchidb.* TO 'gnocchi'@'%' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "GRANT ALL PRIVILEGES ON gnocchidb.* TO 'gnocchi'@'localhost' IDENTIFIED BY 'xxxx';"
+        mysql -u root --password='xxxx' -e "flush privileges;"
+
+    	# Ceilometer
+        source /root/bin/admin-openrc.sh 
+    	openstack user create --domain default --password xxxx ceilometer
+    	openstack role add --project service --user ceilometer admin
+    	openstack service create --name ceilometer --description "Telemetry" metering
+    	openstack user create --domain default --password xxxx gnocchi
+        openstack role add --project service --user gnocchi admin
+    	openstack service create --name gnocchi --description "Metric Service" metric
+		openstack endpoint create --region RegionOne metric public http://controller:8041
+		openstack endpoint create --region RegionOne metric internal http://controller:8041
+		openstack endpoint create --region RegionOne metric admin http://controller:8041
+
+        mkdir -p /var/cache/gnocchi
+        chown gnocchi:gnocchi -R  /var/cache/gnocchi
+        mkdir -p /var/lib/gnocchi
+        chown gnocchi:gnocchi -R  /var/lib/gnocchi
+
+        gnocchi-upgrade
+        sed -i 's/8000/8041/g' /usr/bin/gnocchi-api
+        # Correct error in gnocchi-api startup script
+        sed -i -e 's/exec $DAEMON $DAEMON_ARGS/exec $DAEMON -- $DAEMON_ARGS/' /etc/init.d/gnocchi-api
+        systemctl enable gnocchi-api.service gnocchi-metricd.service gnocchi-statsd.service
+        systemctl start gnocchi-api.service gnocchi-metricd.service gnocchi-statsd.service
+
+		ceilometer-upgrade --skip-metering-database
+		service ceilometer-agent-central restart
+		service ceilometer-agent-notification restart
+		service ceilometer-collector restart
+
+  		# Enable Glance service meters
+  		crudini --set /etc/glance/glance-api.conf DEFAULT transport_url rabbit://openstack:xxxx@controller
+		crudini --set /etc/glance/glance-api.conf oslo_messaging_notifications driver messagingv2
+		crudini --set /etc/glance/glance-registry.conf DEFAULT transport_url rabbit://openstack:xxxx@controller
+		crudini --set /etc/glance/glance-registry.conf oslo_messaging_notifications driver messagingv2
+
+        service glance-registry restart
+        service glance-api restart
+
+        # Enable Neutron service meters
+        crudini --set /etc/neutron/neutron.conf oslo_messaging_notifications driver messagingv2
+        service neutron-server restart
+
+        # Enable Heat service meters
+        crudini --set /etc/heat/heat.conf oslo_messaging_notifications driver messagingv2
+        service heat-api restart
+        service heat-api-cfn restart
+        service heat-engine restart
+
+  		#crudini --set /etc/glance/glance-api.conf DEFAULT rpc_backend rabbit
+		#crudini --set /etc/glance/glance-api.conf oslo_messaging_notifications driver messagingv2
+		#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit rabbit_host controller
+		#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit rabbit_userid openstack
+		#crudini --set /etc/glance/glance-api.conf oslo_messaging_rabbit rabbit_password xxxx
+		
+		#crudini --set /etc/glance/glance-registry.conf DEFAULT rpc_backend rabbit
+		#crudini --set /etc/glance/glance-registry.conf oslo_messaging_notifications driver messagingv2
+		#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit rabbit_host controller
+		#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit rabbit_userid openstack
+		#crudini --set /etc/glance/glance-registry.conf oslo_messaging_rabbit rabbit_password xxxx
+
+
+    </exec>
+
+    <!-- 
+         LOAD IMAGES TO GLANCE
+    -->
+    <exec seq="load-img" type="verbatim">
+        source /root/bin/admin-openrc.sh
+        
+        # Create flavors if not created
+        openstack flavor show m1.nano >/dev/null 2>&amp;1    || openstack flavor create --id 0 --vcpus 1 --ram 64 --disk 1 m1.nano
+        openstack flavor show m1.tiny >/dev/null 2>&amp;1    || openstack flavor create --id 1 --vcpus 1 --ram 512 --disk 1 m1.tiny
+        openstack flavor show m1.smaller >/dev/null 2>&amp;1 || openstack flavor create --id 6 --vcpus 1 --ram 512 --disk 3 m1.smaller
+
+        # CentOS image
+        # Cirros image  
+        #wget -P /tmp/images http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
+        wget -P /tmp/images http://138.4.7.228/download/vnx/filesystems/ostack-images/cirros-0.3.4-x86_64-disk-vnx.qcow2
+        glance image-create --name "cirros-0.3.4-x86_64-vnx" --file /tmp/images/cirros-0.3.4-x86_64-disk-vnx.qcow2 --disk-format qcow2 --container-format bare --visibility public --progress
+        rm /tmp/images/cirros-0.3.4-x86_64-disk*.qcow2
+        
+        # Ubuntu image (trusty)
+        #wget -P /tmp/images http://138.4.7.228/download/vnx/filesystems/ostack-images/trusty-server-cloudimg-amd64-disk1-vnx.qcow2
+        #glance image-create --name "trusty-server-cloudimg-amd64-vnx" --file /tmp/images/trusty-server-cloudimg-amd64-disk1-vnx.qcow2 --disk-format qcow2 --container-format bare --visibility public --progress
+        #rm /tmp/images/trusty-server-cloudimg-amd64-disk1*.qcow2
+
+        # Ubuntu image (xenial)
+        wget -P /tmp/images http://138.4.7.228/download/vnx/filesystems/ostack-images/xenial-server-cloudimg-amd64-disk1-vnx.qcow2
+        glance image-create --name "xenial-server-cloudimg-amd64-vnx" --file /tmp/images/xenial-server-cloudimg-amd64-disk1-vnx.qcow2 --disk-format qcow2 --container-format bare --visibility public --progress
+        rm /tmp/images/xenial-server-cloudimg-amd64-disk1*.qcow2
+
+        #wget -P /tmp/images http://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud.qcow2
+        #glance image-create --name "CentOS-7-x86_64" --file /tmp/images/CentOS-7-x86_64-GenericCloud.qcow2 --disk-format qcow2 --container-format bare --visibility public --progress
+        #rm /tmp/images/CentOS-7-x86_64-GenericCloud.qcow2
+    </exec>
+
+    <!-- 
+         CREATE DEMO SCENARIO
+    -->
+    <exec seq="create-demo-scenario" type="verbatim">
+        source /root/bin/admin-openrc.sh
+
+        # Create security group rules to allow ICMP, SSH and WWW access
+        openstack security group rule create --proto icmp --dst-port 0  default
+        openstack security group rule create --proto tcp  --dst-port 80 default
+        openstack security group rule create --proto tcp  --dst-port 22 default
+
+        # Create internal network
+        openstack network create net0
+        openstack subnet create --network net0 --gateway 10.1.1.1 --dns-nameserver 8.8.8.8 --subnet-range 10.1.1.0/24 --allocation-pool start=10.1.1.8,end=10.1.1.100 subnet0
+
+        # Create virtual machine
+        mkdir -p /root/keys
+        openstack keypair create vm1 > /root/keys/vm1
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vm1 --nic net-id=net0 --key-name vm1
+
+        # Create external network
+        openstack network create --share --external --provider-physical-network provider --provider-network-type flat ExtNet
+        openstack subnet create --network ExtNet --gateway 10.0.10.1 --dns-nameserver 10.0.10.1 --subnet-range 10.0.10.0/24 --allocation-pool start=10.0.10.100,end=10.0.10.200 ExtSubNet
+        openstack router create r0
+        openstack router set r0 --external-gateway ExtNet
+        openstack router add subnet r0 subnet0
+
+        # Assign floating IP address to vm1
+        openstack server add floating ip vm1 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+
+    </exec>
+
+    <exec seq="create-scenario-p81" type="verbatim">
+        source /root/bin/admin-openrc.sh
+
+        # Create security group rules to allow ICMP, SSH and WWW access
+        openstack security group rule create --proto icmp --dst-port 0  default
+        openstack security group rule create --proto tcp  --dst-port 80 default
+        openstack security group rule create --proto tcp  --dst-port 22 default
+
+        # Create internal network
+        openstack network create net1
+        openstack subnet create --network net1 --gateway 10.1.1.1 --dns-nameserver 8.8.8.8 --subnet-range 10.1.1.0/24 --allocation-pool start=10.1.1.8,end=10.1.1.100 subnet1
+
+        # Create internal network
+        openstack network create net2
+        openstack subnet create --network net2 --gateway 10.1.2.1 --dns-nameserver 8.8.8.8 --subnet-range 10.1.2.0/24 --allocation-pool start=10.1.2.8,end=10.1.2.100 subnet2
+
+        # Create virtual machine
+        mkdir -p /root/keys
+        openstack keypair create vm1 > /root/keys/vm1
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vm1 --nic net-id=net1 --key-name vm1
+        openstack keypair create vm2 > /root/keys/vm2
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vm2 --nic net-id=net1 --key-name vm2
+        openstack keypair create vm3 > /root/keys/vm3
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vm3 --nic net-id=net1 --key-name vm3
+        openstack keypair create vm4 > /root/keys/vm4
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vm4 --nic net-id=net2 --key-name vm4
+        openstack keypair create vm5 > /root/keys/vm5
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vm5 --nic net-id=net2 --key-name vm5
+        openstack keypair create vm6 > /root/keys/vm6
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vm6 --nic net-id=net2 --key-name vm6
+
+        # Create external network
+        openstack network create --share --external --provider-physical-network provider --provider-network-type flat ExtNet
+        openstack subnet create --network ExtNet --gateway 10.0.10.1 --dns-nameserver 10.0.10.1 --subnet-range 10.0.10.0/24 --allocation-pool start=10.0.10.100,end=10.0.10.200 ExtSubNet
+        openstack router create r
+        openstack router set r --external-gateway ExtNet
+        openstack router add subnet r subnet1
+        openstack router add subnet r subnet2
+
+        # Assign floating IP address to vm1
+        openstack server add floating ip vm1 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+        openstack server add floating ip vm2 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+        openstack server add floating ip vm3 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+        openstack server add floating ip vm4 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+        openstack server add floating ip vm5 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+        openstack server add floating ip vm6 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+
+    </exec>
+
+    <exec seq="delete-scenario-p81" type="verbatim">
+	#source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v01/bin/admin-openrc.sh
+        source /root/bin/admin-openrc.sh
+
+	openstack server delete vm1
+	openstack server delete vm2
+	openstack server delete vm3
+	openstack server delete vm4
+	openstack server delete vm5
+	openstack server delete vm6
+	openstack router remove subnet r subnet1
+	openstack router remove subnet r subnet2
+	#openstack router remove subnet r $(openstack subnet list -c ID -f value)
+	openstack subnet delete subnet1
+	openstack subnet delete subnet2
+
+	openstack router remove subnet r ExtSubNet
+	openstack subnet delete ExtSubNet
+
+
+	#Delete router
+	openstack router delete r
+		
+	#Delete networks
+	openstack network delete net1
+	openstack network delete net2
+	#openstack network delete ExtNet
+
+	
+	openstack security group rule delete $(openstack security group rule list -c ID -f value)
+	openstack security group delete default
+
+
+	#Delete keypair
+	openstack keypair delete vm1
+	openstack keypair delete vm2
+	openstack keypair delete vm3
+	openstack keypair delete vm4
+	openstack keypair delete vm5
+	openstack keypair delete vm6
+    </exec>
+
+    <exec seq="create-demo-vm2" type="verbatim">
+        source /root/bin/admin-openrc.sh
+        # Create virtual machine
+        mkdir -p /root/keys
+        openstack keypair create vm2 > /root/keys/vm2
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vm2 --nic net-id=net0 --key-name vm2
+        # Assign floating IP address to vm2
+        #openstack ip floating add $( openstack ip floating create ExtNet -c ip -f value ) vm2
+        openstack server add floating ip vm2 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+    </exec>
+
+    <exec seq="create-demo-vm3" type="verbatim">
+        source /root/bin/admin-openrc.sh
+        # Create virtual machine
+        mkdir -p /root/keys
+        openstack keypair create vm3 > /root/keys/vm3
+        openstack server create --flavor m1.smaller --image xenial-server-cloudimg-amd64-vnx vm3 --nic net-id=net0 --key-name vm3
+        # Assign floating IP address to vm3
+        #openstack ip floating add $( openstack ip floating create ExtNet -c ip -f value ) vm3
+        openstack server add floating ip vm3 $( openstack floating ip create ExtNet -c floating_ip_address -f value )
+    </exec>
+
+    <exec seq="create-vlan-demo-scenario" type="verbatim">
+        source /root/bin/admin-openrc.sh
+
+        # Create security group rules to allow ICMP, SSH and WWW access
+        openstack security group rule create --proto icmp --dst-port 0  default
+        openstack security group rule create --proto tcp  --dst-port 80 default
+        openstack security group rule create --proto tcp  --dst-port 22 default
+
+        # Create vlan based networks and subnetworks
+        openstack network create --share --provider-physical-network vlan --provider-network-type vlan --provider-segment 1000 vlan1000
+        openstack network create --share --provider-physical-network vlan --provider-network-type vlan --provider-segment 1001 vlan1001
+        openstack subnet create --network vlan1000 --gateway 10.1.2.1 --dns-nameserver 8.8.8.8 --subnet-range 10.1.2.0/24 --allocation-pool start=10.1.2.2,end=10.1.2.99 subvlan1000
+        openstack subnet create --network vlan1001 --gateway 10.1.3.1 --dns-nameserver 8.8.8.8 --subnet-range 10.1.3.0/24 --allocation-pool start=10.1.3.2,end=10.1.3.99 subvlan1001
+
+        # Create virtual machine
+        mkdir -p tmp
+        openstack keypair create vmA1 > tmp/vmA1
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vmA1 --nic net-id=vlan1000 --key-name vmA1
+        openstack keypair create vmB1 > tmp/vmB1
+        openstack server create --flavor m1.tiny --image cirros-0.3.4-x86_64-vnx vmB1 --nic net-id=vlan1001 --key-name vmB1
+
+    </exec>
+
+    <!-- 
+         VERIFY
+    -->
+    <exec seq="verify" type="verbatim">
+        source /root/bin/admin-openrc.sh
+        echo "--"
+        echo "-- Keystone (identity)"
+        echo "--"
+        echo "Command: openstack --os-auth-url http://controller:35357/v3 --os-project-domain-name default --os-user-domain-name default --os-project-name admin --os-username admin token issue"
+        openstack --os-auth-url http://controller:35357/v3 \
+          --os-project-domain-name default --os-user-domain-name default \
+          --os-project-name admin --os-username admin token issue
+    </exec>
+
+    <exec seq="verify" type="verbatim">
+        echo "--"
+        echo "-- Glance (images)"
+        echo "--"
+        echo "Command: openstack image list"
+        openstack image list
+    </exec>
+
+    <exec seq="verify" type="verbatim">
+        echo "--"
+        echo "-- Nova (compute)"
+        echo "--"
+        echo "Command: openstack compute service list"
+        openstack compute service list
+        echo "Command: openstack hypervisor service list"
+        openstack hypervisor service list
+        echo "Command: openstack catalog list"
+        openstack catalog list
+        echo "Command: nova-status upgrade check"
+        nova-status upgrade check
+    </exec>
+
+    <exec seq="verify" type="verbatim">
+        echo "--"
+        echo "-- Neutron (network)"
+        echo "--"
+        echo "Command: openstack extension list --network"
+        openstack extension list --network
+        echo "Command: openstack network agent list"
+        openstack network agent list
+        echo "Command: openstack security group list"
+        openstack security group list
+        echo "Command: openstack security group rule list"
+        openstack security group rule list
+    </exec>
+
+  </vm>
+
+  <!-- 
+    ~~
+    ~~   N E T W O R K   N O D E
+    ~~
+  -->
+  <vm name="network" type="lxc" arch="x86_64">
+    <filesystem type="cow">filesystems/rootfs_lxc_ubuntu64-ostack-network</filesystem>
+  <!--vm name="network" type="libvirt" subtype="kvm" os="linux" exec_mode="sdisk" arch="x86_64">
+    <filesystem type="cow">filesystems/rootfs_kvm_ubuntu64-ostack-network</filesystem-->
+    <mem>1G</mem>
+    <if id="1" net="MgmtNet">
+      <ipv4>10.0.0.21/24</ipv4>
+    </if>
+    <if id="2" net="TunnNet">
+      <ipv4>10.0.1.21/24</ipv4>
+    </if>
+    <if id="3" net="VlanNet">
+    </if>
+    <if id="4" net="ExtNet">
+    </if>
+    <if id="9" net="virbr0">
+      <ipv4>dhcp</ipv4>
+    </if>
+    <forwarding type="ip" />
+    <forwarding type="ipv6" />
+
+   <!-- Copy /etc/hosts file -->
+    <filetree seq="on_boot" root="/root/">conf/hosts</filetree>
+    <exec seq="on_boot" type="verbatim">
+        cat /root/hosts >> /etc/hosts
+        rm /root/hosts
+    </exec>
+    <exec seq="on_boot" type="verbatim">
+        # Change MgmtNet and TunnNet interfaces MTU
+        ifconfig eth1 mtu 1450
+        sed -i -e '/iface eth1 inet static/a \   mtu 1450' /etc/network/interfaces
+        ifconfig eth2 mtu 1450
+        sed -i -e '/iface eth2 inet static/a \   mtu 1450' /etc/network/interfaces
+        ifconfig eth3 mtu 1450
+        sed -i -e '/iface eth3 inet static/a \   mtu 1450' /etc/network/interfaces
+    </exec>
+
+    <!-- Copy ntp config and restart service -->
+    <!-- Note: not used because ntp cannot be used inside a container. Clocks are supposed to be synchronized
+         between the vms/containers and the host -->
+    <!--filetree seq="on_boot" root="/etc/chrony/chrony.conf">conf/ntp/chrony-others.conf</filetree>
+    <exec seq="on_boot" type="verbatim">
+        service chrony restart
+    </exec-->
+
+    <filetree seq="on_boot" root="/root/">conf/network/bin</filetree>
+    <exec seq="on_boot" type="verbatim">
+        chmod +x /root/bin/*
+    </exec>
+
+    <!-- STEP 5: Network service (Neutron with Option 2: Self-service networks) -->
+    <filetree seq="step52" root="/etc/neutron/">conf/network/neutron/neutron.conf</filetree>
+    <filetree seq="step52" root="/etc/neutron/">conf/network/neutron/metadata_agent.ini</filetree>
+    <filetree seq="step52" root="/etc/neutron/plugins/ml2/">conf/network/neutron/openvswitch_agent.ini</filetree>
+    <!--filetree seq="step52" root="/etc/neutron/plugins/ml2/">conf/network/neutron/linuxbridge_agent.ini</filetree-->
+    <filetree seq="step52" root="/etc/neutron/">conf/network/neutron/l3_agent.ini</filetree>
+    <filetree seq="step52" root="/etc/neutron/">conf/network/neutron/dhcp_agent.ini</filetree>
+    <filetree seq="step52" root="/etc/neutron/">conf/network/neutron/dnsmasq-neutron.conf</filetree>
+    <!--filetree seq="step52" root="/etc/neutron/">conf/network/neutron/fwaas_driver.ini</filetree-->
+    <!--filetree seq="step52" root="/etc/neutron/">conf/network/neutron/lbaas_agent.ini</filetree-->
+    <exec seq="step52" type="verbatim">
+        ovs-vsctl add-br br-vlan
+        ovs-vsctl add-port br-vlan eth3
+        #ovs-vsctl add-br br-ex
+        ovs-vsctl add-port br-provider eth4
+
+        service neutron-lbaasv2-agent restart
+        service openvswitch-switch restart
+		
+        service neutron-openvswitch-agent restart
+		#service neutron-linuxbridge-agent restart
+		service neutron-dhcp-agent restart
+		service neutron-metadata-agent restart
+		service neutron-l3-agent restart
+
+        rm -f /var/lib/neutron/neutron.sqlite
+    </exec>
+
+  </vm>
+
+  <!-- 
+    ~~
+    ~~  C O M P U T E 2   N O D E
+    ~~
+  -->
+    <vm name="compute1" type="lxc" arch="x86_64">
+    <filesystem type="cow">filesystems/rootfs_lxc_ubuntu64-ostack-compute</filesystem>
+    <mem>2G</mem>
+    <if id="1" net="MgmtNet">
+      <ipv4>10.0.0.31/24</ipv4>
+    </if>
+    <if id="2" net="TunnNet">
+      <ipv4>10.0.1.31/24</ipv4>
+    </if>
+    <if id="3" net="VlanNet">
+    </if>
+    <if id="9" net="virbr0">
+      <ipv4>dhcp</ipv4>
+    </if>
+
+    <!-- Copy /etc/hosts file -->
+    <filetree seq="on_boot" root="/root/">conf/hosts</filetree>
+    <exec seq="on_boot" type="verbatim">
+        cat /root/hosts >> /etc/hosts;
+        rm /root/hosts;
+        # Create /dev/net/tun device 
+        #mkdir -p /dev/net/
+        #mknod -m 666 /dev/net/tun  c 10 200
+        # Change MgmtNet and TunnNet interfaces MTU
+        ifconfig eth1 mtu 1450
+        sed -i -e '/iface eth1 inet static/a \   mtu 1450' /etc/network/interfaces
+        ifconfig eth2 mtu 1450
+        sed -i -e '/iface eth2 inet static/a \   mtu 1450' /etc/network/interfaces
+        ifconfig eth3 mtu 1450
+        sed -i -e '/iface eth3 inet static/a \   mtu 1450' /etc/network/interfaces
+    </exec>
+
+    <!-- Copy ntp config and restart service -->
+    <!-- Note: not used because ntp cannot be used inside a container. Clocks are supposed to be synchronized
+         between the vms/containers and the host --> 
+    <!--filetree seq="on_boot" root="/etc/chrony/chrony.conf">conf/ntp/chrony-others.conf</filetree>
+    <exec seq="on_boot" type="verbatim">
+        service chrony restart
+    </exec-->
+
+    <!-- STEP 42: Compute service (Nova) -->
+    <filetree seq="step42" root="/etc/nova/">conf/compute1/nova/nova.conf</filetree>
+    <filetree seq="step42" root="/etc/nova/">conf/compute1/nova/nova-compute.conf</filetree>
+    <exec seq="step42" type="verbatim">
+        service nova-compute restart
+        #rm -f /var/lib/nova/nova.sqlite
+    </exec>
+
+    <!-- STEP 5: Network service (Neutron) -->
+    <filetree seq="step53" root="/etc/neutron/">conf/compute1/neutron/neutron.conf</filetree>
+    <filetree seq="step53" root="/etc/neutron/plugins/ml2/">conf/compute1/neutron/openvswitch_agent.ini</filetree>
+    <exec seq="step53" type="verbatim">
+        ovs-vsctl add-br br-vlan
+        ovs-vsctl add-port br-vlan eth3
+        service openvswitch-switch restart
+        service neutron-openvswitch-agent restart
+        service libvirtd restart
+        service nova-compute restart
+    </exec>
+
+    <!--filetree seq="step92" root="/usr/local/etc/tacker/">conf/controller/tacker/tacker.conf</filetree>
+    <exec seq="step92" type="verbatim">
+    </exec-->
+
+    <!-- STEP 10: Ceilometer service -->
+    <exec seq="step101" type="verbatim">
+		export DEBIAN_FRONTEND=noninteractive
+        apt-get -y install ceilometer-agent-compute
+    </exec>
+    <filetree seq="step102" root="/etc/ceilometer/">conf/compute2/ceilometer/ceilometer.conf</filetree>
+    <exec seq="step102" type="verbatim">
+		crudini --set /etc/nova/nova.conf DEFAULT instance_usage_audit True
+		crudini --set /etc/nova/nova.conf DEFAULT instance_usage_audit_period hour
+		crudini --set /etc/nova/nova.conf DEFAULT notify_on_state_change vm_and_task_state
+		crudini --set /etc/nova/nova.conf oslo_messaging_notifications driver messagingv2
+		service ceilometer-agent-compute restart
+		service nova-compute restart
+    </exec>
+
+  </vm>
+
+  <!-- 
+    ~~~
+    ~~~  C O M P U T E 2   N O D E
+    ~~~
+  -->
+  <vm name="compute2" type="lxc" arch="x86_64">
+    <filesystem type="cow">filesystems/rootfs_lxc_ubuntu64-ostack-compute</filesystem>
+    <mem>2G</mem>
+    <if id="1" net="MgmtNet">
+      <ipv4>10.0.0.32/24</ipv4>
+    </if>
+    <if id="2" net="TunnNet">
+      <ipv4>10.0.1.32/24</ipv4>
+    </if>
+    <if id="3" net="VlanNet">
+    </if>
+    <if id="9" net="virbr0">
+      <ipv4>dhcp</ipv4>
+    </if>
+
+    <!-- Copy /etc/hosts file -->
+    <filetree seq="on_boot" root="/root/">conf/hosts</filetree>
+    <exec seq="on_boot" type="verbatim">
+        cat /root/hosts >> /etc/hosts;
+        rm /root/hosts;
+        # Create /dev/net/tun device 
+        #mkdir -p /dev/net/
+        #mknod -m 666 /dev/net/tun  c 10 200
+        # Change MgmtNet and TunnNet interfaces MTU
+        ifconfig eth1 mtu 1450
+        sed -i -e '/iface eth1 inet static/a \   mtu 1450' /etc/network/interfaces
+        ifconfig eth2 mtu 1450
+        sed -i -e '/iface eth2 inet static/a \   mtu 1450' /etc/network/interfaces
+        ifconfig eth3 mtu 1450
+        sed -i -e '/iface eth3 inet static/a \   mtu 1450' /etc/network/interfaces
+    </exec>
+
+    <!-- Copy ntp config and restart service -->
+    <!-- Note: not used because ntp cannot be used inside a container. Clocks are supposed to be synchronized
+         between the vms/containers and the host --> 
+    <!--filetree seq="on_boot" root="/etc/chrony/chrony.conf">conf/ntp/chrony-others.conf</filetree>
+    <exec seq="on_boot" type="verbatim">
+        service chrony restart
+    </exec-->
+
+    <!-- STEP 42: Compute service (Nova) -->
+    <filetree seq="step42" root="/etc/nova/">conf/compute2/nova/nova.conf</filetree>
+    <filetree seq="step42" root="/etc/nova/">conf/compute2/nova/nova-compute.conf</filetree>
+    <exec seq="step42" type="verbatim">
+        service nova-compute restart
+        #rm -f /var/lib/nova/nova.sqlite
+    </exec>
+
+    <!-- STEP 5: Network service (Neutron with Option 2: Self-service networks) -->
+    <filetree seq="step53" root="/etc/neutron/">conf/compute2/neutron/neutron.conf</filetree>
+    <filetree seq="step53" root="/etc/neutron/plugins/ml2/">conf/compute2/neutron/openvswitch_agent.ini</filetree>
+    <exec seq="step53" type="verbatim">
+        ovs-vsctl add-br br-vlan
+        ovs-vsctl add-port br-vlan eth3
+        service openvswitch-switch restart
+        service neutron-openvswitch-agent restart
+        service libvirtd restart
+        service nova-compute restart
+    </exec>
+
+    <!-- STEP 10: Ceilometer service -->
+    <exec seq="step101" type="verbatim">
+		export DEBIAN_FRONTEND=noninteractive
+        apt-get -y install ceilometer-agent-compute
+    </exec>
+    <filetree seq="step102" root="/etc/ceilometer/">conf/compute2/ceilometer/ceilometer.conf</filetree>
+    <exec seq="step102" type="verbatim">
+		crudini --set /etc/nova/nova.conf DEFAULT instance_usage_audit True
+		crudini --set /etc/nova/nova.conf DEFAULT instance_usage_audit_period hour
+		crudini --set /etc/nova/nova.conf DEFAULT notify_on_state_change vm_and_task_state
+		crudini --set /etc/nova/nova.conf oslo_messaging_notifications driver messagingv2
+		service ceilometer-agent-compute restart
+		service nova-compute restart
+    </exec>
+
+  </vm>
+
+  <!-- 
+    ~~
+    ~~   H O S T   N O D E
+    ~~
+  -->
+  <host>
+    <hostif net="ExtNet">
+       <ipv4>10.0.10.1/24</ipv4>
+    </hostif>
+    <hostif net="MgmtNet">
+      <ipv4>10.0.0.1/24</ipv4>
+    </hostif>
+    <exec seq="step00" type="verbatim">
+    	echo "--\n-- Waiting for all VMs to be ssh ready...\n--"
+    </exec>
+    <exec seq="step00" type="verbatim">
+    	# Wait till ssh is accesible in all VMs
+    	while ! $( nc -z controller 22 ); do sleep 1; done
+    	while ! $( nc -z network 22 ); do sleep 1; done
+    	while ! $( nc -z compute1 22 ); do sleep 1; done
+    	while ! $( nc -z compute2 22 ); do sleep 1; done
+    </exec>
+    <exec seq="step00" type="verbatim">
+    	echo "-- ...OK\n--"
+    </exec>
+  </host>
+
+</vnx>
