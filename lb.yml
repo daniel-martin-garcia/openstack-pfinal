@@ -1,0 +1,67 @@
+parameters:
+    subnet_name:
+        type: string
+        description: Net name
+    ip_address1:
+        type: string
+        description: IP Address1
+    ip_address2:
+        type: string
+        description: IP Address2
+    ip_address3:
+        type: string
+        description: IP Address3
+heat_template_version: 2017-02-24
+description: Firewall
+resources: 
+    lb:
+        type: OS::Neutron::LBaaS::LoadBalancer
+        properties:
+            name: load balancer
+            vip_subnet: { get_param: subnet_name }
+    public_ip:
+        type: OS::Neutron::FloatingIP
+        properties:
+            floating_network_id: ExtNet
+            port_id: { get_attr: [lb, vip_port_id] }
+    listener:
+        type: OS::Neutron::LBaaS::Listener
+        properties:
+            loadBalancer: { get_resource: lb }
+            protocol: HTTP
+            protocol_port: 80
+    pool:
+        type: OS::Neutron::LBaaS::Pool
+        properties:
+            name: pool
+            lb_algorithm: ROUND_ROBIN
+            protocol: TCP
+            listener: { get_resource: listener }
+    pool_member:
+        type: OS::Neutron::LBaaS::PoolMember
+        properties:
+            name: member1
+            address: { get_param: ip_address_1 }
+            pool: { get_resource: pool }
+            protocol_port: 80
+            subnet: { get_param: subnet_name }
+    pool_member:
+        type: OS::Neutron::LBaaS::PoolMember
+        properties:
+            name: member2
+            address: { get_param: ip_address_2 }
+            pool: { get_resource: pool }
+            protocol_port: 80
+            subnet: { get_param: subnet_name }
+    pool_member:
+        type: OS::Neutron::LBaaS::PoolMember
+        properties:
+            name: member3
+            address: { get_param: ip_address_3 }
+            pool: { get_resource: pool }
+            protocol_port: 80
+            subnet: { get_param: subnet_name }
+outputs:
+    instance_ip:
+        description: The IP address of the deployed instance
+        value: { get_attr: [lb, first_address] }
