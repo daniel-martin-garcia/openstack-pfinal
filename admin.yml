@@ -9,20 +9,14 @@ parameters:
         type: string
         description: Net name
 heat_template_version: 2017-02-24
-description: App server
-resources:
-    cloud_config:
-        type: OS::Heat::cloud_config
-        properties:
-            cloud_config: 
-    vm:
+description: Admin server
+resources: 
+    admin:
         type: OS::Nova::Server
         properties:
             key_name: { get_resource: server_ssh_key }
             image:  xenial-server-cloudimg-amd64-vnx
             flavor: m1.smaller
-            user_data_formar: SOFTWARE_CONFIG
-            user_data: { get_resource: cloud_config }
             networks:
                 - network: { get_param: net_name2 }
                 - network: { get_param: net_name1 }
@@ -31,7 +25,12 @@ resources:
         properties:
             name: { get_param: key_name }
             save_private_key: true
+    public_ip:
+        type: OS::Nova::FloatingIP
+        properties:
+            floating_network_id: ExtNet    
+
 outputs:
     instance_ip:
         description: The IP address of the deployed instance
-        value: { get_attr: [vm, networks, net1, 0] }
+        value: { get_attr: [vm, floating_ip_address] }
