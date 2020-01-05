@@ -27,6 +27,16 @@ resources:
             protocol: tcp
             destination_port: 80
             enabled: true
+            destination_ip_address: 10.1.1.0/24
+    firewall_rule_ssh:
+        type: OS::Neutron::FirewallRule
+        properties:
+            name: tcp_http
+            description: TCP/HTTP traffic management
+            action: allow
+            destination_port: 22
+            enabled: true
+            destination_ip_address: 10.1.1.0/24
 outputs:
     instance_ip:
         description: The IP address of the deployed instance

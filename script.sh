@@ -52,7 +52,7 @@ echo "Creating servers..."
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm1" vm1_stack
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm2" vm2_stack
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm3" vm3_stack
-sleep 5
+sleep 20
 
 #Admin
 openstack stack create -t admin.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=admin" admin_stack
@@ -74,5 +74,8 @@ echo "Admin Floating IP is : $IP_ADMIN"
 
 #LoadBalancer
 ./lb.sh $IP_VM1 $IP_VM2 $IP_VM3 
+
+#Firewall
+./fw.sh
 
 

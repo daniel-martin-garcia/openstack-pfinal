@@ -7,4 +7,5 @@ sudo vnx -f openstack_lab.xml --create
 sudo vnx -f openstack_lab.xml -x start-all
 sudo vnx -f openstack_lab.xml -x load-img
 sudo vnx_config_nat ExtNet enp1s0
+sudo vnx_config_nat ExtNet eno1
 echo "Escenario desplegado"
