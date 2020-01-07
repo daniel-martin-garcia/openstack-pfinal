@@ -43,7 +43,7 @@ resources:
             name: member1
             address: { get_param: ip_address_1 }
             pool: { get_resource: pool }
-            protocol_port: 80
+            protocol_port: 8080
             subnet: { get_param: subnet_name }
     pool_member:
         type: OS::Neutron::LBaaS::PoolMember
@@ -51,7 +51,7 @@ resources:
             name: member2
             address: { get_param: ip_address_2 }
             pool: { get_resource: pool }
-            protocol_port: 80
+            protocol_port: 8080
             subnet: { get_param: subnet_name }
     pool_member:
         type: OS::Neutron::LBaaS::PoolMember
@@ -59,7 +59,7 @@ resources:
             name: member3
             address: { get_param: ip_address_3 }
             pool: { get_resource: pool }
-            protocol_port: 80
+            protocol_port: 8080
             subnet: { get_param: subnet_name }
 outputs:
     instance_ip:

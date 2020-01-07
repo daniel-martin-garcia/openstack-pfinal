@@ -73,9 +73,12 @@ IP_ADMIN=$(openstack stack output show admin_stack instance_ip -f value -c outpu
 echo "Admin Floating IP is : $IP_ADMIN"
 
 #LoadBalancer
-./lb.sh $IP_VM1 $IP_VM2 $IP_VM3 
+echo ""
+echo "Creating database..."
+openstack stack create -t lb.yml --parameter "subnet_name=subnet1" --parameter "ip_address1=$IP_VM1" --parameter "ip_address2=$IP_VM2" --parameter "ip_address3=$IP_VM3" lb_stack
+#./lb.sh $IP_VM1 $IP_VM2 $IP_VM3 
 
 #Firewall
-./fw.sh
+#./fw.sh
 
 
