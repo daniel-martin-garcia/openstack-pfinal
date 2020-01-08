@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v04/bin/admin-openrc.sh
+source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v05/bin/admin-openrc.sh
 #openstack orchestration template validate -t ejemplo1.yml
 #openstack stack create -t ejemplo1.yml --parameter "net_name=net0" --parameter "key_name=vm2" stack2
 #openstack stack output show --all stack2
@@ -12,16 +12,20 @@ source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v04/bin/admin-openrc.sh
 #Deleting stacks if created
 echo "Deleting stacks..."
 
-neutron lbaas-listener-delete lb-http
-neutron lbaas-pool-delete lb-http-pool
-neutron lbaas-loadbalancer-delete lb
-openstack security group delete lbaasv2
-sleep 3
+#neutron lbaas-listener-delete lb-http
+#neutron lbaas-pool-delete lb-http-pool
+#neutron lbaas-loadbalancer-delete lb
+#openstack security group delete lbaasv2
+#sleep 3
 openstack stack delete -y vm1_stack
 sleep 3
 openstack stack delete -y vm2_stack
 sleep 3
 openstack stack delete -y vm3_stack
+sleep 3
+openstack stack delete -y vm_example1_stack
+sleep 3
+openstack stack delete -y vm_example2_stack
 sleep 3
 openstack stack delete -y db_stack
 sleep 3
@@ -31,7 +35,10 @@ openstack stack delete -y admin_stack
 sleep 3
 openstack stack delete -y net1_stack
 openstack stack delete -y net2_stack
-sleep 20
+openstack stack delete -y lb_stack
+echo ""
+echo "All stacks deleted."
+sleep 40
 
 #Networks
 echo ""
@@ -52,7 +59,9 @@ echo "Creating servers..."
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm1" vm1_stack
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm2" vm2_stack
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm3" vm3_stack
-sleep 20
+openstack stack create -t ejemplo1.yml --parameter "net_name=net1" vm_example1_stack
+openstack stack create -t ejemplo2.yml --parameter "net_name1=net1" --parameter "net_name2=net2" vm_example2_stack
+sleep 30
 
 #Admin
 openstack stack create -t admin.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=admin" admin_stack
@@ -74,7 +83,7 @@ echo "Admin Floating IP is : $IP_ADMIN"
 
 #LoadBalancer
 echo ""
-echo "Creating database..."
+echo "Creating load balancer..."
 openstack stack create -t lb.yml --parameter "subnet_name=subnet1" --parameter "ip_address1=$IP_VM1" --parameter "ip_address2=$IP_VM2" --parameter "ip_address3=$IP_VM3" lb_stack
 #./lb.sh $IP_VM1 $IP_VM2 $IP_VM3 
 

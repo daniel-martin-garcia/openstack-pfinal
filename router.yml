@@ -16,6 +16,7 @@ resources:
                 network: ExtNet
     router_interface:
         type: OS::Neutron::RouterInterface
+        depends_on: router
         properties:
             router_id: { get_resource: router }
             subnet_id: { get_param: subnet_id }

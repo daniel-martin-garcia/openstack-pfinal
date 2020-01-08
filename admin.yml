@@ -18,8 +18,8 @@ resources:
             image:  xenial-server-cloudimg-amd64-vnx
             flavor: m1.smaller
             networks:
-                - network: { get_param: net_name2 }
                 - network: { get_param: net_name1 }
+                - network: { get_param: net_name2 }
                 - port: { get_resource: port }
     server_ssh_key:
         type: OS::Nova::KeyPair

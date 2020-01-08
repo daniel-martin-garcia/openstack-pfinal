@@ -27,7 +27,7 @@ resources:
     listener:
         type: OS::Neutron::LBaaS::Listener
         properties:
-            loadBalancer: { get_resource: lb }
+            loadbalancer: { get_resource: lb }
             protocol: HTTP
             protocol_port: 80
     pool:
@@ -35,33 +35,30 @@ resources:
         properties:
             name: pool
             lb_algorithm: ROUND_ROBIN
-            protocol: TCP
+            protocol: HTTP
             listener: { get_resource: listener }
     pool_member:
         type: OS::Neutron::LBaaS::PoolMember
         properties:
-            name: member1
-            address: { get_param: ip_address_1 }
+            address: { get_param: ip_address1 }
             pool: { get_resource: pool }
             protocol_port: 8080
             subnet: { get_param: subnet_name }
     pool_member:
         type: OS::Neutron::LBaaS::PoolMember
         properties:
-            name: member2
-            address: { get_param: ip_address_2 }
+            address: { get_param: ip_address2 }
             pool: { get_resource: pool }
             protocol_port: 8080
             subnet: { get_param: subnet_name }
     pool_member:
         type: OS::Neutron::LBaaS::PoolMember
         properties:
-            name: member3
-            address: { get_param: ip_address_3 }
+            address: { get_param: ip_address3 }
             pool: { get_resource: pool }
             protocol_port: 8080
             subnet: { get_param: subnet_name }
 outputs:
     instance_ip:
         description: The IP address of the deployed instance
-        value: { get_attr: [lb, first_address] }
+        value: { get_attr: [lb, vip_address] }
