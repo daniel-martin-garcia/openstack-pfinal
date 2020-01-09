@@ -10,17 +10,7 @@ parameters:
         description: Net name
 heat_template_version: 2017-02-24
 description: Admin server
-resources: 
-    admin:
-        type: OS::Nova::Server
-        properties:
-            key_name: { get_resource: server_ssh_key }
-            image:  xenial-server-cloudimg-amd64-vnx
-            flavor: m1.smaller
-            networks:
-                - network: { get_param: net_name1 }
-                - network: { get_param: net_name2 }
-                - port: { get_resource: port }
+resources:                 
     server_ssh_key:
         type: OS::Nova::KeyPair
         properties:
@@ -30,13 +20,29 @@ resources:
         type: OS::Neutron::Port
         properties:
             network_id: { get_param: net_name1 }
-            fixed_ips: [{"subnet": subnet1}]
+            security_groups: 
+                - default
+            fixed_ips: 
+                - subnet: subnet1        
     public_ip:
         type: OS::Neutron::FloatingIP
         properties:
             floating_network: ExtNet
             port_id: { get_resource: port }
+    admin:
+        type: OS::Nova::Server
+        properties:
+            key_name: { get_resource: server_ssh_key }
+            image:  xenial-server-cloudimg-amd64-vnx
+            flavor: m1.smaller
+            networks:
+                - port: { get_resource: port }
+                - network: { get_param: net_name2 }
+
 outputs:
     instance_ip:
         description: The Floating IP of the deployed instance
         value: { get_attr: [public_ip, floating_ip_address] }
+    instance_fixed_ip:
+        description: The Fixed IP of the deployed instance
+        value: { get_attr: [port, fixed_ips, 0, ip_address] }

@@ -26,14 +26,14 @@ done
 
 echo "Stopping server vm..."
 sleep 5
-VM0=$(openstack server list -c NAME -f value)
+VM0=$(openstack server list -c ID -f value)
 openstack server stop $VM0
 sleep 5
 
-STATUS=$(openstack server list -c STATUS -f value)
+STATUS=$(openstack server list -c Status -f value)
 while :
 do
-    if [ $STATUS != "STOP" ] #Mirar la condicion
+    if [ $STATUS != "SHUTOFF" ] #Mirar la condicion
         then
             sleep 5
     else

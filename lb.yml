@@ -37,21 +37,21 @@ resources:
             lb_algorithm: ROUND_ROBIN
             protocol: HTTP
             listener: { get_resource: listener }
-    pool_member:
+    pool_member1:
         type: OS::Neutron::LBaaS::PoolMember
         properties:
             address: { get_param: ip_address1 }
             pool: { get_resource: pool }
             protocol_port: 8080
             subnet: { get_param: subnet_name }
-    pool_member:
+    pool_member2:
         type: OS::Neutron::LBaaS::PoolMember
         properties:
             address: { get_param: ip_address2 }
             pool: { get_resource: pool }
             protocol_port: 8080
             subnet: { get_param: subnet_name }
-    pool_member:
+    pool_member3:
         type: OS::Neutron::LBaaS::PoolMember
         properties:
             address: { get_param: ip_address3 }

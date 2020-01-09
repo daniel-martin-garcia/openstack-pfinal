@@ -42,6 +42,14 @@ echo ""
 echo "All stacks deleted."
 sleep 30
 
+
+admin_project_id=$(openstack project show admin -c id -f value)
+default_secgroup_id=$(openstack security group list -f value | grep default | grep $admin_project_id | cut -d " " -f1)
+openstack security group rule create --proto icmp --dst-port 0  $default_secgroup_id
+openstack security group rule create --proto tcp  --dst-port 80 $default_secgroup_id
+openstack security group rule create --proto tcp  --dst-port 22 $default_secgroup_id
+openstack security group rule create --proto tcp  --dst-port 8080 $default_secgroup_id
+
 #Networks
 echo ""
 echo "Creating networks..."
@@ -63,10 +71,11 @@ openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_n
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm3" vm3_stack
 openstack stack create -t ejemplo1.yml --parameter "net_name=net1" vm_example1_stack
 openstack stack create -t ejemplo2.yml --parameter "net_name1=net1" --parameter "net_name2=net2" vm_example2_stack
-sleep 30
+sleep 40
 
 #Admin
 openstack stack create -t admin.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=admin" admin_stack
+sleep 5
 
 #Database
 echo ""
@@ -82,14 +91,22 @@ IP_VM3=$(openstack stack output show vm3_stack instance_ip -f value -c output_va
 echo "Vm3 IP Address is : $IP_VM3"
 IP_ADMIN=$(openstack stack output show admin_stack instance_ip -f value -c output_value)
 echo "Admin Floating IP is : $IP_ADMIN"
+IP_FIXED_ADMIN=$(openstack stack output show admin_stack instance_fixed_ip -f value -c output_value)
+echo "Admin Fixed IP is : $IP_FIXED_ADMIN"
+
 
 #LoadBalancer
 echo ""
 echo "Creating load balancer..."
 openstack stack create -t lb.yml --parameter "subnet_name=subnet1" --parameter "ip_address1=$IP_VM1" --parameter "ip_address2=$IP_VM2" --parameter "ip_address3=$IP_VM3" lb_stack
 #./lb.sh $IP_VM1 $IP_VM2 $IP_VM3 
+sleep 20
+IP_LB=$(openstack stack output show lb_stack instance_ip -f value -c output_value)
+echo "LB fixed IP is : $IP_LB"
 
 #Firewall
-#./fw.sh
+echo ""
+echo "Creating firewall ..."
+./fw.sh $IP_FIXED_ADMIN $IP_LB
 
 
