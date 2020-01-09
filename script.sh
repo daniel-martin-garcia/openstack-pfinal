@@ -18,27 +18,29 @@ echo "Deleting stacks..."
 #openstack security group delete lbaasv2
 #sleep 3
 openstack stack delete -y vm1_stack
-sleep 3
+sleep 2
 openstack stack delete -y vm2_stack
-sleep 3
+sleep 2
 openstack stack delete -y vm3_stack
-sleep 3
+sleep 2
 openstack stack delete -y vm_example1_stack
-sleep 3
+sleep 2
 openstack stack delete -y vm_example2_stack
-sleep 3
-openstack stack delete -y db_stack
-sleep 3
-openstack stack delete -y router_stack
-sleep 3
+sleep 2
 openstack stack delete -y admin_stack
-sleep 3
-openstack stack delete -y net1_stack
-openstack stack delete -y net2_stack
+sleep 2
+openstack stack delete -y db_stack
+sleep 2
 openstack stack delete -y lb_stack
+sleep 2
+openstack stack delete -y router_stack
+sleep 2
+openstack stack delete -y net1_stack
+sleep 2
+openstack stack delete -y net2_stack
 echo ""
 echo "All stacks deleted."
-sleep 40
+sleep 30
 
 #Networks
 echo ""
