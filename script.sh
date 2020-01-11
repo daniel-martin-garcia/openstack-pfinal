@@ -23,10 +23,6 @@ openstack stack delete -y vm2_stack
 sleep 2
 openstack stack delete -y vm3_stack
 sleep 2
-openstack stack delete -y vm_example1_stack
-sleep 2
-openstack stack delete -y vm_example2_stack
-sleep 2
 openstack stack delete -y admin_stack
 sleep 2
 openstack stack delete -y db_stack
@@ -40,7 +36,7 @@ sleep 2
 openstack stack delete -y net2_stack
 echo ""
 echo "All stacks deleted."
-sleep 30
+sleep 40
 
 
 admin_project_id=$(openstack project show admin -c id -f value)
@@ -69,13 +65,12 @@ echo "Creating servers..."
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm1" vm1_stack
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm2" vm2_stack
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm3" vm3_stack
-openstack stack create -t ejemplo1.yml --parameter "net_name=net1" vm_example1_stack
-openstack stack create -t ejemplo2.yml --parameter "net_name1=net1" --parameter "net_name2=net2" vm_example2_stack
-sleep 40
+
+sleep 100
 
 #Admin
 openstack stack create -t admin.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=admin" admin_stack
-sleep 5
+sleep 20
 
 #Database
 echo ""
