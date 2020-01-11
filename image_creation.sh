@@ -1,28 +1,34 @@
 #!/bin/bash
-
-openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm3" vm0_stack
+echo "Creating scenario..."
+openstack stack create -t net.yml --parameter "net_name=net0" --parameter "subnet_name=subnet0" --parameter "start_allocation_pools=10.1.0.8" --parameter "end_allocation_pools=10.1.0.100" --parameter "gateway_ip=10.1.0.1" --parameter "subnet_cidr=10.1.0.0/24" net0_stack
+openstack stack create -t router.yml --parameter "router_name=r0" --parameter "subnet_id=subnet0" router0_stack
+openstack stack create -t server_image.yml --parameter "net_name=net0" --parameter "key_name=vm0" server_image_stack
+echo "Scenario created. Waiting for VMs to download server..."
 #-------------------------------------------------------------------------------------
 #PARA MIRAR DENTRO DE LA VM: openstack server ssh --login root --port 22 <server-name>
 #-------------------------------------------------------------------------------------
 
-counter=1 
-while [ $counter -lt 10 ] 
-do
-    if [ -e server.txt ]
-    then
-        echo "Server creation finished successfully."
-        break
-    else
-        echo "Server not created yet. Waiting..."
-        sleep 10
-        ((counter++))
-        if [ $counter -eq 10 ]
-        then
-            echo "Server could not be created. Exiting..."
-            exit(0)
-        fi
-    fi
-done
+#counter=1 
+#while [ $counter -lt 10 ] 
+#do
+#    if [ -e server.txt ]
+#    then
+#        echo "Server creation finished successfully."
+#        break
+#    else
+#        echo "Server not created yet. Waiting..."
+#        sleep 10
+#        ((counter++))
+#        if [ $counter -eq 10 ]
+#        then
+#            echo "Server could not be created. Exiting..."
+#            exit(0)
+#        fi
+#    fi
+#done
+
+sleep 60
+
 
 echo "Stopping server vm..."
 sleep 5
@@ -43,8 +49,13 @@ do
 done
 
 echo "Creating image..."
-openstack server image create --name server-image --wait vm0 #obtener el valor del servidor
+openstack server image create --name server-image --wait $VM0 #obtener el valor del servidor
 echo "Image created successfully."
-echo "Deleting stack..."
-openstack stack delele vm0_stack
-echo "Stack deleted successfully"
+echo "Deleting stacks..."
+openstack stack delete server_image_stack
+sleep 2
+openstack stack delete router0_stack
+sleep 2
+openstack stack delete net0
+sleep 2
+echo "Stacks deleted successfully"

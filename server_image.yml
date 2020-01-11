@@ -10,22 +10,21 @@ parameters:
         description: Net name
 heat_template_version: 2017-02-24
 description: App server
-resources: 
+resources:
     vm:
         type: OS::Nova::Server
         properties:
             key_name: { get_resource: server_ssh_key }
-            image:  server-image
+            image:  xenial-server-cloudimg-amd64-vnx
             flavor: m1.smaller
             user_data_format: SOFTWARE_CONFIG
             user_data:
                 str_replace:
-                    template: {get_file: cloud_script.sh}
+                    template: {get_file: cloud_image_script.sh}
                     params:
                         $VMNAME: {get_param: key_name}
             networks:
                 - network: { get_param: net_name1 }
-                - network: { get_param: net_name2 }
     server_ssh_key:
         type: OS::Nova::KeyPair
         properties:
