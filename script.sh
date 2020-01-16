@@ -75,7 +75,8 @@ sleep 20
 #Database
 echo ""
 echo "Creating database..."
-openstack stack create -t ddbb.yml --parameter "net_name=net2" --parameter "key_name=db" db_stack
+openstack stack create -t db_final.yml --parameter "net_name=net2" --parameter "key_name=db" db_stack
+sleep 60
 
 #Servers IP addressed
 IP_VM1=$(openstack stack output show vm1_stack instance_ip -f value -c output_value)

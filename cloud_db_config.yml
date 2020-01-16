@@ -1,0 +1,5 @@
+#cloud-config
+packages:
+    - mongodb
+runcmd:
+    - [mkdir, -p, /data/db ]
