@@ -18,7 +18,7 @@ parameters:
         type: string
         description: cidr
 heat_template_version: 2017-02-24
-description: Crear clave
+description: Net and subnet
 resources: 
     net:
         type: OS::Neutron::Net

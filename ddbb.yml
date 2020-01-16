@@ -6,7 +6,7 @@ parameters:
         type: string
         description: Net name
 heat_template_version: 2017-02-24
-description: Databases
+description: Database
 resources: 
     db:
         type: OS::Nova::Server
@@ -21,6 +21,11 @@ resources:
         properties:
             name: { get_param: key_name }
             save_private_key: true
+            user_data:
+                package:
+                    - mongodb
+                runcmd:
+                    - [ mkdir, -p, /db ]
 outputs:
     instance_ip:
         description: The IP address of the deployed instance

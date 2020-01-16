@@ -12,7 +12,7 @@ parameters:
         type: string
         description: IP Address3
 heat_template_version: 2017-02-24
-description: Firewall
+description: Load Balancer
 resources: 
     lb:
         type: OS::Neutron::LBaaS::LoadBalancer

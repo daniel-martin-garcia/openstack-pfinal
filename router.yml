@@ -6,7 +6,7 @@ parameters:
         type: string
         description: Subnet ID
 heat_template_version: 2017-02-24
-description: Crear clave
+description: Router
 resources: 
     router:
         type: OS::Neutron::Router
