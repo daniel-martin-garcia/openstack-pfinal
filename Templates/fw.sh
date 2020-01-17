@@ -10,10 +10,12 @@ echo "$IP_LB"
 echo ""
 echo "Deleting firewall group, rules and policies..."
 openstack firewall group set --no-port --no-ingress-firewall-policy --no-egress-firewall-policy fw-group
+sleep 10
 openstack firewall group delete fw-group
 openstack firewall group policy delete fw-policy
 openstack firewall group rule delete lb_rule
 openstack firewall group rule delete admin_rule
+echo "Fw deleted"
 sleep 10
 
 echo ""
@@ -25,5 +27,7 @@ openstack firewall group policy create --firewall-rule lb_rule --firewall-rule a
 sleep 3
 
 PORT_ID=$(openstack port list --fixed-ip subnet=subnet1,ip-address=10.1.1.1 -c ID -f value)
-openstack firewall group create --ingress-firewall-policy fw-policy --egress-firewall-policy 68359d90-b1a1-47cb-a6c2-85002b11d4f2 --port $PORT_ID --name fw-group
+#openstack firewall group create --ingress-firewall-policy fw-policy --egress-firewall-policy 68359d90-b1a1-47cb-a6c2-85002b11d4f2 --port $PORT_ID --name fw-group
+openstack firewall group create --ingress-firewall-policy fw-policy --egress-firewall-policy 4335a308-ea39-4438-bcff-81ec63a63b4b --port $PORT_ID --name fw-group
+
 

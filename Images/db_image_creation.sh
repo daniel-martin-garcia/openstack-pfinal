@@ -1,9 +1,9 @@
 #!/bin/bash
-source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v05/bin/admin-openrc.sh
+source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v05/bin/demo-openrc.sh
 
 
-admin_project_id=$(openstack project show admin -c id -f value)
-default_secgroup_id=$(openstack security group list -f value | grep default | grep $admin_project_id | cut -d " " -f1)
+demo_project_id=$(openstack project show demo -c id -f value)
+default_secgroup_id=$(openstack security group list -f value | grep default | grep $demo_project_id | cut -d " " -f1)
 openstack security group rule create --proto icmp --dst-port 0  $default_secgroup_id
 openstack security group rule create --proto tcp  --dst-port 80 $default_secgroup_id
 openstack security group rule create --proto tcp  --dst-port 22 $default_secgroup_id
@@ -15,7 +15,7 @@ openstack stack create -t ../Templates/net.yml --parameter "net_name=net0" --par
 sleep 5
 openstack stack create -t ../Templates/router.yml --parameter "router_name=r0" --parameter "subnet_id=subnet0" router0_stack
 sleep 5
-openstack stack create -t ../Templates/db_image.yml --parameter "net_name=net0" --parameter "key_name=db0" db_image_stack
+openstack stack create -t db_image.yml --parameter "net_name=net0" --parameter "key_name=db0" db_image_stack
 echo "Scenario created. Waiting for instance to download database..."
 #-------------------------------------------------------------------------------------
 # PARA PROBARLO --> DENTRO DE LA CONSOLA: mongod --version

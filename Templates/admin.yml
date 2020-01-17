@@ -35,9 +35,14 @@ resources:
             key_name: { get_resource: server_ssh_key }
             image:  xenial-server-cloudimg-amd64-vnx
             flavor: m1.smaller
+            user_data_format: RAW
+            user_data: |
+                #!/bin/bash
+                ifdir='/etc/network/interfaces.d'; for iface in $(ip -o link | cut -d: -f2 | tr -d ' ' | grep ^ens); do if [ ! -e ${ifdir}'/'${iface}'.cfg' ]; then echo 'Creating iface file for '${iface}; printf 'auto '${iface}'\niface '${iface}' inet dhcp\n' > $ifdir'/'$iface'.cfg'; ifup ${iface}; fi; done
             networks:
                 - port: { get_resource: port }
                 - network: { get_param: net_name2 }
+
 
 outputs:
     instance_ip:

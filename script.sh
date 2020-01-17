@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v05/bin/admin-openrc.sh
+source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v05/bin/demo-openrc.sh
 DIRECTORY=$(pwd)
 cd $DIRECTORY/Templates
 #openstack orchestration template validate -t ejemplo1.yml
@@ -36,8 +36,8 @@ sleep 20
 
 
 #SECURITY GROUPS
-admin_project_id=$(openstack project show admin -c id -f value)
-default_secgroup_id=$(openstack security group list -f value | grep default | grep $admin_project_id | cut -d " " -f1)
+demo_project_id=$(openstack project show demo -c id -f value)
+default_secgroup_id=$(openstack security group list -f value | grep default | grep $demo_project_id | cut -d " " -f1)
 openstack security group rule create --proto icmp --dst-port 0  $default_secgroup_id
 openstack security group rule create --proto tcp  --dst-port 80 $default_secgroup_id
 openstack security group rule create --proto tcp  --dst-port 22 $default_secgroup_id
@@ -66,48 +66,56 @@ openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_n
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm2" vm2_stack
 openstack stack create -t vm.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=vm3" vm3_stack
 echo ""
-sleep 30
+sleep 60
 
 
 #ADMIN INSTANCE
 echo "Creating admin instance..."
 openstack stack create -t admin.yml --parameter "net_name1=net1" --parameter "net_name2=net2" --parameter "key_name=admin" admin_stack
-sleep 20
+sleep 40
 echo ""
 
 
 #DATABASE
 echo "Creating database..."
-openstack stack create -t db_final.yml --parameter "net_name=net2" --parameter "key_name=db" db_stack
+openstack stack create -t db.yml --parameter "net_name=net2" --parameter "key_name=db" db_stack
 echo ""
-sleep 30
+sleep 70
+
+
+
+#IP ADDRESSES
+IP_VM1=$(openstack stack output show vm1_stack instance_ip -f value -c output_value)
+echo "Vm1 IP Address is : $IP_VM1"
+sleep 3
+
+IP_VM2=$(openstack stack output show vm2_stack instance_ip -f value -c output_value)
+echo "Vm2 IP Address is : $IP_VM2"
+sleep 3
+
+IP_VM3=$(openstack stack output show vm3_stack instance_ip -f value -c output_value)
+echo "Vm3 IP Address is : $IP_VM3"
+sleep 3
+
+IP_ADMIN=$(openstack stack output show admin_stack instance_ip -f value -c output_value)
+echo "Admin Floating IP is : $IP_ADMIN"
+sleep 3
+
+IP_FIXED_ADMIN=$(openstack stack output show admin_stack instance_fixed_ip -f value -c output_value)
+echo "Admin Fixed IP is : $IP_FIXED_ADMIN"
+sleep 3
+
+IP_DB=$(openstack stack output show db_stack instance_ip -f value -c output_value)
+echo "Database fixed IP is : $IP_DB"
+
+
 
 
 #LOAD BALANCER
 echo "Creating load balancer..."
 openstack stack create -t lb.yml --parameter "subnet_name=subnet1" --parameter "ip_address1=$IP_VM1" --parameter "ip_address2=$IP_VM2" --parameter "ip_address3=$IP_VM3" lb_stack
 echo ""
-sleep 20
-
-
-#IP ADDRESSES
-IP_VM1=$(openstack stack output show vm1_stack instance_ip -f value -c output_value)
-echo "Vm1 IP Address is : $IP_VM1"
-
-IP_VM2=$(openstack stack output show vm2_stack instance_ip -f value -c output_value)
-echo "Vm2 IP Address is : $IP_VM2"
-
-IP_VM3=$(openstack stack output show vm3_stack instance_ip -f value -c output_value)
-echo "Vm3 IP Address is : $IP_VM3"
-
-IP_ADMIN=$(openstack stack output show admin_stack instance_ip -f value -c output_value)
-echo "Admin Floating IP is : $IP_ADMIN"
-
-IP_FIXED_ADMIN=$(openstack stack output show admin_stack instance_fixed_ip -f value -c output_value)
-echo "Admin Fixed IP is : $IP_FIXED_ADMIN"
-
-IP_DB=$(openstack stack output show db_stack instance_ip -f value -c output_value)
-echo "Load Balancer fixed IP is : $IP_DB"
+sleep 40
 
 IP_LB=$(openstack stack output show lb_stack instance_ip -f value -c output_value)
 echo "Load Balancer fixed IP is : $IP_LB"
