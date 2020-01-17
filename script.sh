@@ -1,6 +1,8 @@
 #!/bin/bash
 
 source /mnt/tmp/openstack_lab-stein_4n_classic_ovs-v05/bin/admin-openrc.sh
+DIRECTORY=$(pwd)
+cd $DIRECTORY/Templates
 #openstack orchestration template validate -t ejemplo1.yml
 #openstack stack create -t ejemplo1.yml --parameter "net_name=net0" --parameter "key_name=vm2" stack2
 #openstack stack output show --all stack2
@@ -82,27 +84,33 @@ sleep 30
 
 
 #LOAD BALANCER
-echo ""
 echo "Creating load balancer..."
 openstack stack create -t lb.yml --parameter "subnet_name=subnet1" --parameter "ip_address1=$IP_VM1" --parameter "ip_address2=$IP_VM2" --parameter "ip_address3=$IP_VM3" lb_stack
-#./lb.sh $IP_VM1 $IP_VM2 $IP_VM3 
+echo ""
 sleep 20
 
 
 #IP ADDRESSES
 IP_VM1=$(openstack stack output show vm1_stack instance_ip -f value -c output_value)
 echo "Vm1 IP Address is : $IP_VM1"
+
 IP_VM2=$(openstack stack output show vm2_stack instance_ip -f value -c output_value)
 echo "Vm2 IP Address is : $IP_VM2"
+
 IP_VM3=$(openstack stack output show vm3_stack instance_ip -f value -c output_value)
 echo "Vm3 IP Address is : $IP_VM3"
+
 IP_ADMIN=$(openstack stack output show admin_stack instance_ip -f value -c output_value)
 echo "Admin Floating IP is : $IP_ADMIN"
+
 IP_FIXED_ADMIN=$(openstack stack output show admin_stack instance_fixed_ip -f value -c output_value)
 echo "Admin Fixed IP is : $IP_FIXED_ADMIN"
+
+IP_DB=$(openstack stack output show db_stack instance_ip -f value -c output_value)
+echo "Load Balancer fixed IP is : $IP_DB"
+
 IP_LB=$(openstack stack output show lb_stack instance_ip -f value -c output_value)
 echo "Load Balancer fixed IP is : $IP_LB"
-echo ""
 
 
 #FIREWALL
