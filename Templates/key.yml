@@ -1,0 +1,13 @@
+parameters:
+    key_name:
+        type: string
+        description: Keypair name
+heat_template_version: 2017-02-24
+description: Crear clave
+resources: 
+    server_ssh_key:
+        type: OS::Nova::KeyPair
+        properties:
+            name: { get_param: key_name }
+            save_private_key: true
+

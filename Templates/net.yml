@@ -1,0 +1,54 @@
+parameters:
+    net_name:
+        type: string
+        description: Net name
+    subnet_name:
+        type: string
+        description: Subnet name
+    start_allocation_pools:
+        type: string
+        description: Start Allocation Pools
+    end_allocation_pools:
+        type: string
+        description: End Allocation Pools
+    gateway_ip:
+        type: string
+        description: Gateway IP
+    subnet_cidr:
+        type: string
+        description: cidr
+heat_template_version: 2017-02-24
+description: Net and subnet
+resources: 
+    net:
+        type: OS::Neutron::Net
+        properties:
+            name: { get_param: net_name }
+    subnet:
+        type: OS::Neutron::Subnet
+        properties:
+           name: { get_param: subnet_name }
+           gateway_ip: { get_param: gateway_ip }
+           dns_nameservers: [ 8.8.8.8 ]
+           allocation_pools: [{"start": { get_param: start_allocation_pools } , "end": { get_param: end_allocation_pools }}]
+           network_id: { get_resource: net }
+           cidr: { get_param: subnet_cidr }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

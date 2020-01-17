@@ -1,0 +1,41 @@
+parameters:
+    router_name:
+        type: string
+        description: Router name
+    subnet_id:
+        type: string
+        description: Subnet ID
+heat_template_version: 2017-02-24
+description: Router
+resources: 
+    router:
+        type: OS::Neutron::Router
+        properties:
+            name: { get_param: router_name }
+            external_gateway_info:
+                network: ExtNet
+    router_interface:
+        type: OS::Neutron::RouterInterface
+        depends_on: router
+        properties:
+            router_id: { get_resource: router }
+            subnet_id: { get_param: subnet_id }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
